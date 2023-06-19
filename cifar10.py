@@ -1,9 +1,3 @@
-# Copyright (C) 2019. Huawei Technologies Co., Ltd. All rights reserved.
-
-# This program is free software; you can redistribute it and/or modify it under the terms of the BSD 3-Clause License.
-
-# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the BSD 3-Clause License for more details.
-
 import argparse
 import os
 import numpy as np
