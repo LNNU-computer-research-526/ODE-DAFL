@@ -42,6 +42,7 @@ parser.add_argument('--ie', type=float, default=5, help='information entropy los
 parser.add_argument('--a', type=float, default=0.1, help='activation loss')
 parser.add_argument('--output_dir', type=str, default='/cache/models/')
 parser.add_argument('--anomaly_rate', type=int, default=0.1, help='anomaly_rate')
+parser.add_argument('--pl', type=float, default=2e-5, help='pixel loss')
 opt = parser.parse_args()
 
 img_shape = (opt.channels, opt.img_size, opt.img_size)
@@ -85,42 +86,12 @@ class Generator(nn.Module):
         img = nn.functional.interpolate(img,scale_factor=2)
         img = self.conv_blocks2(img)
         return img
-
-class Decoder(nn.Module):
-    def __init__(self):
-        super(Decoder, self).__init__()
-
-        self.deconv1 = nn.ConvTranspose2d(120, 16, kernel_size=(5, 5))
-        self.relu1 = nn.ReLU()
-        self.upsample1 = nn.Upsample(scale_factor=2)
-        self.deconv2 = nn.ConvTranspose2d(16, 6, kernel_size=(5, 5))
-        self.relu2 = nn.ReLU()
-        self.upsample2 = nn.Upsample(scale_factor=2)
-        self.deconv3 = nn.ConvTranspose2d(6, 1, kernel_size=(5, 5))
-        self.relu3 = nn.ReLU()
-
-    def forward(self, feature):
-        output = feature.view(-1, 120, 1, 1)
-        output = self.deconv1(output)
-        output = self.relu1(output)
-        output = self.upsample1(output)
-        output = self.deconv2(output)
-        output = self.relu2(output)
-        output = self.upsample2(output)
-        output = self.deconv3(output)
-        img = self.relu3(output)
-        return img
-
-
-# generator = torch.load(opt.teacher_dir + 'generator').cuda()
-
 teacher = torch.load(opt.teacher_dir + 'teacher').cuda()
 teacher.eval()
 generator.eval()
 criterion = torch.nn.CrossEntropyLoss().cuda()
 
 teacher = nn.DataParallel(teacher)
-# generator = nn.DataParallel(generator)
 
 
 def kdloss(y, teacher_scores):
@@ -193,15 +164,12 @@ def pre_calculate_possibility(pred, outputs_T):
     pred = pred.cpu().detach()
     pred = pred.reshape(-1, 1)
     outputs_T = outputs_T.cpu().detach()
-    # fz = z.cpu().detach
     if flagp:
-        # temp_z = fz
         zz = outputs_T
         p = pred
         flagp = False
     else:
-        # temp_z = np.vstack([temp_z, fz])
-        zz = np.vstack([zz, outputs_T])  # (120320, 10)
+        zz = np.vstack([zz, outputs_T])
         p = np.vstack([p, pred])
 
 
@@ -212,15 +180,12 @@ def data_process(data):
         num = int(num * opt.anomaly_rate)
         if num < 1:
             break
-        y = np.extract(data[:, 1] == i, data[:, 0])  # 所有标签为i的值
+        y = np.extract(data[:, 1] == i, data[:, 0])
         y.sort()
-        # print(num)
         threshold = y[num - 1]
         for s in range(znum):
             if data[s, 1] == i and data[s, 0] <= threshold:
                 signal[s] = 0
-
-    # signal = np.transpose(signal).reshape(-1, 1)
 
 
 def calculate_possibility():
@@ -245,8 +210,6 @@ def save_x(x):
 # ----------
 temp_x = []
 flagx = True
-# lenth = len(data_train_loader)
-#第一轮
 for i in range(120):
         net.train()
         delta = Variable(torch.randn(opt.batch_size, opt.latent_dim)).cuda()
@@ -280,7 +243,6 @@ for epoch in range(opt.n_epochs):
                 temp_x[i] = torch.zeros(1, 32, 32)
     for i in range(120):
         net.train()
-        # z = Variable(torch.randn(opt.batch_size, opt.latent_dim)).cuda()
         optimizer_G.zero_grad()
         optimizer_S.zero_grad()
         _, z = teacher(temp_x[xnum:xnum + opt.batch_size].to('cuda'), out_feature=True)
@@ -294,12 +256,10 @@ for epoch in range(opt.n_epochs):
         softmax_o_T = torch.nn.functional.softmax(outputs_T, dim=1).mean(dim=0)
         loss_information_entropy = (softmax_o_T * torch.log10(softmax_o_T)).sum()
         loss = loss_one_hot * opt.oh + loss_information_entropy * opt.ie + loss_activation * opt.a
-        # loss_xx = kdloss(outputs_T, teacher(temp_x[xnum:xnum + opt.batch_size].to('cuda'))).cuda()
         xx_pixel_loss = pixelwise_loss(temp_x[xnum:xnum + opt.batch_size].to('cuda'), gen_imgs)
         loss_kd = kdloss(net(gen_imgs.detach()), outputs_T.detach())
         loss += loss_kd
-        loss += xx_pixel_loss * 2e-5
-        # loss += loss_xx
+        loss += xx_pixel_loss * opt.pl
         loss.backward()
         xnum += opt.batch_size
         optimizer_G.step()
@@ -311,7 +271,6 @@ for epoch in range(opt.n_epochs):
 
     calculate_possibility()
     data_process(result)
-    print(epoch, ':', signal.count(0))
 
     with torch.no_grad():
         for i, (images, labels) in enumerate(data_test_loader):
@@ -327,7 +286,6 @@ for epoch in range(opt.n_epochs):
     print('Test Avg. Loss: %f, Accuracy: %f' % (avg_loss.data.item(), float(total_correct) / len(data_test)))
     accr = round(float(total_correct) / len(data_test), 4)
     if accr > accr_best:
-        torch.save(net,opt.output_dir + '3.29CIFAR10student')
-        # torch.save(generator, opt.output_dir + '3.29CIFAR10gen')
+        torch.save(net,opt.output_dir + 'student')
         accr_best = accr
 print(accr_best)
