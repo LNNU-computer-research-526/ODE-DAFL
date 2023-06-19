@@ -81,9 +81,7 @@ class Generator(nn.Module):
         return img
         
 generator = Generator().cuda()
-    
-# teacher = torch.load(opt.teacher_dir + 'MNISTteacher').cuda()
-teacher = torch.load(opt.teacher_dir + 'gen_test_teacher').cuda()
+teacher = torch.load(opt.teacher_dir + 'teacher').cuda()
 teacher.eval()
 criterion = torch.nn.CrossEntropyLoss().cuda()
 
@@ -148,20 +146,16 @@ def saving_genimg2(x):
 
 pixelwise_loss = torch.nn.L1Loss()
 pixelwise_loss.cuda()
-# from torchvision.utils import save_image
 def pre_calculate_possibility(pred, outputs_T):
     global flagp, saved_output, p
     pred = pred.cpu().detach()
     pred = pred.reshape(-1, 1)
     outputs_T = outputs_T.cpu().detach()
-    # fz = z.cpu().detach
     if flagp:
-        # temp_z = fz
         saved_output = outputs_T
         p = pred
         flagp = False
     else:
-        # temp_z = np.vstack([temp_z, fz])
         saved_output = np.vstack([saved_output, outputs_T])  # (120320, 10)
         p = np.vstack([p, pred])
 
@@ -191,7 +185,6 @@ def data_process(data):
             break
         y = np.extract(data[:, 1] == i, data[:, 0])
         y.sort()
-        # print(num)
         threshold = y[num - 1]
         for s in range(znum):
             if data[s, 1] == i and data[s, 0] <= threshold:
@@ -269,11 +262,7 @@ for epoch in range(opt.n_epochs):
         loss += loss_kd
         xx_pixel_loss = pixelwise_loss(saved_genimg[xnum:xnum + opt.batch_size], gen_imgs)
         loss += xx_pixel_loss *  opt.pl
-
-
         loss.backward()
-
-
         optimizer_G.step()
         optimizer_S.step()
         xnum += opt.batch_size
@@ -297,5 +286,5 @@ for epoch in range(opt.n_epochs):
     accr = round(float(total_correct) / len(data_test), 4)
     if accr > accr_best:
         accr_best = accr
-        torch.save(net,opt.output_dir + 'fanhuaxing_mine_student')
+        torch.save(net,opt.output_dir + 'student')
 print(accr_best)
