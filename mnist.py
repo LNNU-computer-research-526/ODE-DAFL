@@ -32,12 +32,12 @@ parser.add_argument('--lr_S', type=float, default=2e-3, help='learning rate')
 parser.add_argument('--latent_dim', type=int, default=120, help='dimensionality of the latent space')
 parser.add_argument('--img_size', type=int, default=32, help='size of each image dimension')
 parser.add_argument('--channels', type=int, default=1, help='number of image channels')
-parser.add_argument('--oh', type=float, default=1, help='one hot loss')#1
-parser.add_argument('--ie', type=float, default=5, help='information entropy loss')#5
-parser.add_argument('--a', type=float, default=0.1, help='activation loss')#0.1
-parser.add_argument('--pl', type=float, default=2e-5, help='pixel loss')#0.01
+parser.add_argument('--oh', type=float, default=1, help='one hot loss')
+parser.add_argument('--ie', type=float, default=5, help='information entropy loss')
+parser.add_argument('--a', type=float, default=0.1, help='activation loss')
+parser.add_argument('--pl', type=float, default=2e-5, help='pixel loss')
 parser.add_argument('--output_dir', type=str, default='/cache/models/')
-parser.add_argument('--anomaly_rate', type=int, default=0.1, help='anomaly_rate')#0.1
+parser.add_argument('--anomaly_rate', type=int, default=0.1, help='anomaly_rate')
 opt = parser.parse_args()
 
 img_shape = (opt.channels, opt.img_size, opt.img_size)
@@ -79,23 +79,6 @@ class Generator(nn.Module):
         img = nn.functional.interpolate(img,scale_factor=2)
         img = self.conv_blocks2(img)
         return img
-# class Generator(nn.Module):
-#     def __init__(self):
-#         super(Generator, self).__init__()
-#         self.deconv1 = nn.ConvTranspose2d(120, 16, kernel_size=(5,5))
-#         self.deconv2 = nn.ConvTranspose2d(16, 6, 3)
-#         self.upsampling = nn.Upsample(scale_factor=2, mode='bilinear')
-#         self.deconv3 = nn.ConvTranspose2d(6, 3, 3)
-#         self.latest_out = nn.Conv2d(3, 1, 1,stride=(1,1),padding=0)
-#     def forward(self, feature):
-#         z = feature.view(-1,120,1,1)
-#         z = F.relu(self.deconv1(z))
-#         img = F.relu(self.deconv2(z))
-#         img = self.upsampling(img)
-#         img = F.relu(self.deconv3(img))
-#         img = self.upsampling(img)
-#         img = self.latest_out(img)
-#         return img
         
 generator = Generator().cuda()
     
@@ -129,8 +112,6 @@ if opt.dataset == 'MNIST':
     # Optimizers
     optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr_G)
     optimizer_S = torch.optim.Adam(net.parameters(), lr=opt.lr_S)
-    # optimizer_parameters =  itertools.chain(generator.parameters(),net.parameters())
-    # optimizer_Sum = torch.optim.Adam(net.parameters(), lr=0.01)
 
 
 def saving_feature(x):
@@ -208,7 +189,7 @@ def data_process(data):
         num = int(num * opt.anomaly_rate)
         if num < 1:
             break
-        y = np.extract(data[:, 1] == i, data[:, 0])  # 所有标签为i的值
+        y = np.extract(data[:, 1] == i, data[:, 0])
         y.sort()
         # print(num)
         threshold = y[num - 1]
@@ -218,7 +199,6 @@ def data_process(data):
 # ----------
 #  Training
 # ----------
-# np.savetxt("C:/Users/ASUS/Desktop/temp/saved_feature.txt",np.array(saved_feature.detach().cpu()).reshape(-1, 1))
 for epoch in range(opt.n_epochs):
     znum = 0
     saved_genimg2 = []
@@ -278,9 +258,7 @@ for epoch in range(opt.n_epochs):
         optimizer_G.zero_grad()
         optimizer_S.zero_grad()        
         gen_imgs = generator(z)
-        # saving_genimg2(gen_imgs.detach().cpu().numpy())
         outputs_T, features_T = teacher(gen_imgs, out_feature=True)  
-        # saving_feature2(features_T.detach().cpu().numpy())
         pred = outputs_T.data.max(1)[1]       
         loss_activation = -features_T.abs().mean()
         loss_one_hot = criterion(outputs_T,pred)
