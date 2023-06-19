@@ -40,6 +40,7 @@ parser.add_argument('--ie', type=float, default=5, help='information entropy los
 parser.add_argument('--a', type=float, default=0.1, help='activation loss')
 parser.add_argument('--output_dir', type=str, default='/cache/models/')
 parser.add_argument('--anomaly_rate', type=int, default=0.1, help='anomaly_rate')
+parser.add_argument('--pl', type=float, default=1, help='pixel loss')
 opt = parser.parse_args()
 
 img_shape = (opt.channels, opt.img_size, opt.img_size)
@@ -81,27 +82,9 @@ class Generator(nn.Module):
         img = nn.functional.interpolate(img,scale_factor=2)
         img = self.conv_blocks2(img)
         return img
-# class Generator(nn.Module):
-#     def __init__(self):
-#         super(Generator, self).__init__()
-#         self.deconv1 = nn.ConvTranspose2d(120, 16, kernel_size=(5,5))
-#         self.deconv2 = nn.ConvTranspose2d(16, 6, 3)
-#         self.upsampling = nn.Upsample(scale_factor=2, mode='bilinear')
-#         self.deconv3 = nn.ConvTranspose2d(6, 3, 3)
-#         self.latest_out = nn.Conv2d(3, 1, 1,stride=(1,1),padding=0)
-#     def forward(self, feature):
-#         z = feature.view(-1,120,1,1)
-#         z = F.relu(self.deconv1(z))
-#         img = F.relu(self.deconv2(z))
-#         img = self.upsampling(img)
-#         img = F.relu(self.deconv3(img))
-#         img = self.upsampling(img)
-#         img = self.latest_out(img)
-#         return img
         
 generator = Generator().cuda()
-    
-teacher = torch.load(opt.teacher_dir + 'teacher-AR').cuda()
+teacher = torch.load(opt.teacher_dir + 'teacher').cuda()
 teacher.eval()
 criterion = torch.nn.CrossEntropyLoss().cuda()
 
@@ -212,21 +195,17 @@ def saving_genimg2(x):
 
 pixelwise_loss = torch.nn.L1Loss()
 pixelwise_loss.cuda()
-# from torchvision.utils import save_image
 def pre_calculate_possibility(pred, outputs_T):
     global flagp, saved_output, p
     pred = pred.cpu().detach()
     pred = pred.reshape(-1, 1)
     outputs_T = outputs_T.cpu().detach()
-    # fz = z.cpu().detach
     if flagp:
-        # temp_z = fz
         saved_output = outputs_T
         p = pred
         flagp = False
     else:
-        # temp_z = np.vstack([temp_z, fz])
-        saved_output = np.vstack([saved_output, outputs_T])  # (120320, 10)
+        saved_output = np.vstack([saved_output, outputs_T])
         p = np.vstack([p, pred])
 
 def multivariate_normal_distribution(x, d, mean, covariance):
@@ -253,9 +232,8 @@ def data_process(data):
         num = int(num * opt.anomaly_rate)
         if num < 1:
             break
-        y = np.extract(data[:, 1] == i, data[:, 0])  # 所有标签为i的值
+        y = np.extract(data[:, 1] == i, data[:, 0])
         y.sort()
-        # print(num)
         threshold = y[num - 1]
         for s in range(znum):
             if data[s, 1] == i and data[s, 0] <= threshold:
@@ -264,7 +242,6 @@ def data_process(data):
 # ----------
 #  Training
 # ----------
-# np.savetxt("C:/Users/ASUS/Desktop/temp/saved_feature.txt",np.array(saved_feature.detach().cpu()).reshape(-1, 1))
 for epoch in range(opt.n_epochs):
     znum = 0
     saved_genimg2 = []
@@ -303,8 +280,6 @@ for epoch in range(opt.n_epochs):
         outputs_S, features_S = net(gen_imgs.detach(),out_feature = True)
         loss_kd = kdloss(outputs_S, outputs_T.detach())
         loss += loss_kd
-        # loss_f = pixelwise_loss(features_S,features_T.detach())
-        # loss += loss_f
         loss.backward()
         optimizer_G.step()
         optimizer_S.step()
@@ -326,9 +301,7 @@ for epoch in range(opt.n_epochs):
         optimizer_G.zero_grad()
         optimizer_S.zero_grad()        
         gen_imgs = generator(z)
-        # saving_genimg2(gen_imgs.detach().cpu().numpy())
         outputs_T, features_T = teacher(gen_imgs, out_feature=True)  
-        # saving_feature2(features_T.detach().cpu().numpy())
         pred = outputs_T.data.max(1)[1]       
         loss_activation = -features_T.abs().mean()
         loss_one_hot = criterion(outputs_T,pred)
