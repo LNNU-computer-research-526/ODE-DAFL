@@ -35,7 +35,7 @@ parser.add_argument('--ie', type=float, default=20, help='information entropy lo
 parser.add_argument('--a', type=float, default=0.1, help='activation loss')
 parser.add_argument('--output_dir', type=str, default='/cache/models/')
 parser.add_argument('--anomaly_rate', type=int, default=0.05, help='anomaly_rate')#0.1
-
+parser.add_argument('--pl', type=float, default=2e-3, help='pixel loss')
 opt = parser.parse_args()
 
 img_shape = (opt.channels, opt.img_size, opt.img_size)
@@ -81,7 +81,7 @@ class Generator(nn.Module):
         
 generator = Generator().cuda()
     
-teacher = torch.load(opt.teacher_dir +'teacher-CIFAR100').cuda()
+teacher = torch.load(opt.teacher_dir +'teacher').cuda()
 teacher.eval()
 criterion = torch.nn.CrossEntropyLoss().cuda()
 
@@ -168,14 +168,11 @@ def pre_calculate_possibility(pred, outputs_T):
     pred = pred.cpu().detach()
     pred = pred.reshape(-1, 1)
     outputs_T = outputs_T.cpu().detach()
-    # fz = z.cpu().detach
     if flagp:
-        # temp_z = fz
         saved_output = outputs_T
         p = pred
         flagp = False
     else:
-        # temp_z = np.vstack([temp_z, fz])
         saved_output = np.vstack([saved_output, outputs_T])  # (120320, 10)
         p = np.vstack([p, pred])
 
@@ -203,9 +200,8 @@ def data_process(data):
         num = int(num * opt.anomaly_rate)
         if num < 1:
             break
-        y = np.extract(data[:, 1] == i, data[:, 0])  # 所有标签为i的值
+        y = np.extract(data[:, 1] == i, data[:, 0])
         y.sort()
-        # print(num)
         threshold = y[num - 1]
         for s in range(znum):
             if data[s, 1] == i and data[s, 0] <= threshold:
@@ -273,9 +269,7 @@ for epoch in range(opt.n_epochs):
         optimizer_G.zero_grad()
         optimizer_S.zero_grad()        
         gen_imgs = generator(z)
-        # saving_genimg2(gen_imgs.detach().cpu().numpy())
         outputs_T, features_T = teacher(gen_imgs, out_feature=True)  
-        # saving_feature2(features_T.detach().cpu().numpy())
         pred = outputs_T.data.max(1)[1]       
         loss_activation = -features_T.abs().mean()
         loss_one_hot = criterion(outputs_T,pred)
@@ -286,7 +280,7 @@ for epoch in range(opt.n_epochs):
         loss_kd = kdloss(outputs_S, outputs_T.detach())
         loss += loss_kd
         xx_pixel_loss = pixelwise_loss(saved_genimg[xnum:xnum + opt.batch_size], gen_imgs)
-        loss += xx_pixel_loss * (2e-3)
+        loss += xx_pixel_loss * opt.pl
         loss.backward()
         optimizer_G.step()
         optimizer_S.step()
@@ -312,4 +306,3 @@ for epoch in range(opt.n_epochs):
         # torch.save(net,opt.output_dir + 'student')
         accr_best = accr
         print("Best Acc=%.8f" % accr_best)
-print("Best Acc=%.8f"%accr_best)
